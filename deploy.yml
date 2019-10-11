@@ -1,0 +1,34 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: web
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: java-demo
+  template:
+    metadata:
+      labels:
+        app: java-demo
+    spec:
+      imagePullSecrets:
+      - name: $SECRET_NAME
+      containers:
+      - image: $IMAGE_NAME
+        name: tomcat
+        ports:
+        - containerPort: 8080
+          name: web
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web
+spec:
+  ports:
+  - port: 80
+    protocol: TCP
+    targetPort: 8080
+  selector:
+    app: java-demo
