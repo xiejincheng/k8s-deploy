@@ -1,0 +1,60 @@
+//公共
+def registry = "118.190.201.14"
+//项目
+def project = "welcom"
+def app_name = "demo"
+def image_name = "${registry}/${project}/${app_name}:${BUILD_NUMBER}"
+def git_address = "git@118.190.201.14:/home/git/java-demo.git"
+//认证
+def secret_name = "registry-pull-secret"
+def docker_registry_auth = "76aba3bd-cc8c-45a2-95cf-b5ed9aac5002"
+def git_auth = "f4550165-e7c6-473d-9d12-ed5170cba02c"
+def k8s_auth = "生成id"
+
+podTemplate(label: 'jenkins-slave', cloud: 'kubernetes', containers: [
+    containerTemplate(
+        name: 'jnlp', 
+        image: "${registry}/library/jenkins-slave-jdk:1.8"
+),
+  ],
+  volumes: [
+    hostPathVolume(mountPath: '/var/run/docker.sock', hostPath: '/var/run/docker.sock'),
+    hostPathVolum(mountPath: '/usr/bin/docker', hostPath: '/usr/bin/docker')
+  ],
+) 
+{
+  node("jenkins-slave"){
+      //第一步
+      stage('拉取代码'){
+         checkout([$class: 'GitSCM', branches: [[name: '${Branch}']], userRemoteConfigs: [[credentialsId: "${git_auth}", url: "${git_addres}"]]])
+       }
+      //第二步
+      stage('代码编译'){
+          sh "mvn clean package -Dmaven.test.skip=true"
+      }
+      //第三步
+      stage('构建镜像'){
+          withCredentials([usernamePassword(credentialsId: "${docker_registry_auth}", passwordVariable: 'password', usernameVariable: 'username')]) {
+           sh """
+             echo '
+               FROM lizhenliang/tomcat
+               RUN rm -fr /usr/local/tomcat/webapps/*
+               ADD target/*.war /usr/local/tomcat/webapps/ROOT.war
+             ' > Dockerfile
+             docker build -t ${image_name} .
+             docker login -u ${username} -p '${password}' ${registry}
+             docker push ${image_name}
+           """ 
+           }
+      }
+          
+     //第四步
+     stage('部署到k8s平台'){
+         sh """
+         sed -i 's#\$IMAGE_NAME#${image_name}#' deploy.yml
+         sed -i 's#\SECRET_NAME#${secret_name}#' deploy.yml
+         """
+         kubernetesDeploy configs: 'deploy.yml', kubeconfigId: "${k8s_auth}"
+     }
+  } 
+}
